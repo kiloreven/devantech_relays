@@ -1,10 +1,10 @@
 Howto:
 
     # Import the module
-    from devantech_relays import core
+    from devantech_relays import eth
 
     # Initiate a relay instance
-    relay = core.ETHRelay('10.10.10.10', password='password')
+    relay = eth.ETHRelay('10.10.10.10', password='password')
 
     # Set relay 1 to closed
     relay.set_relay_state(1, True)
