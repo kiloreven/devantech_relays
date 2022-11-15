@@ -166,11 +166,11 @@ class ETHRelay:
         # Let's try to connect
         try:
             self.sock.connect((ip, port))
-        except Exception, e:
+        except Exception as e:
             # The connection could fail for a multitide of reasons, in which
             # we will propagate any exception thrown by socket up the stack
             # by printing the exception
-            print e
+            print(e)
             self.sock.close()
             return False
             
@@ -181,7 +181,7 @@ class ETHRelay:
             unlocked = self.unlock(password)
             if not unlocked:
                 if DEBUG:
-                    print "Failed to unlock module. Try again."
+                    print("Failed to unlock module. Try again.")
                 return False
             
             self.connected = True 
@@ -193,10 +193,10 @@ class ETHRelay:
         try:
             self.lock()
             self.sock.close()
-        except Exception, e:
-            print e
+        except Exception as e:
+            print(e)
         if DEBUG:
-            print "Disconnected"
+            print("Disconnected")
         return True
 
         
@@ -223,11 +223,11 @@ class ETHRelay:
         # Dirtily validate the keys
         for k in _dict.keys():
             if not isinstance(k, int):
-                print "Value %s is not integer (it is %s)." % (k, type(k))
+                print("Value %s is not integer (it is %s)." % (k, type(k)))
                 return False
             elif k > self.no_relays:
-                print "Value %s too large; number of relays on this module is %s." % (k, self.no_relays)
-        
+                print("Value %s too large; number of relays on this module is %s." % (k, self.no_relays))
+
         vals = ''
         # We want to iterate through the three bytes of data we might end up sending
         for i in range(1, 25):
@@ -247,9 +247,9 @@ class ETHRelay:
             command = command + value
         try:
             self.sock.sendall(command)
-        except Exception, e:
+        except Exception as e:
             if DEBUG:
-                print "Error sending message"
+                print("Error sending message")
 
         return self.read_command_result(number_of_bytes)
 
@@ -262,15 +262,15 @@ class ETHRelay:
         number_of_bytes_received = 0
         while number_of_bytes_received < number_of_bytes:
             if DEBUG:
-                print "Getting byte %d" % (number_of_bytes_received+1)
+                print("Getting byte %d" % (number_of_bytes_received+1))
             chunk = self.sock.recv(min(number_of_bytes - number_of_bytes_received, 2048))
             if chunk == '':
-                print 'Error reading message - premature end of message'
+                print('Error reading message - premature end of message')
                 raise RuntimeError("socket connection broken")
             chunks.append(chunk)
             number_of_bytes_received += len(chunk)
         if DEBUG:
-            print 'Chunks:', [x.encode('hex') for x in chunks]
+            print('Chunks:', [x.encode('hex') for x in chunks])
         return ''.join(chunks)
 
 
@@ -287,7 +287,7 @@ class ETHRelay:
             model = MODELS[self.model_id]
         except AttributeError:
             if DEBUG:
-                print "Invalid model: %s is not defined in MODELS." % self.model_id
+                print("Invalid model: %s is not defined in MODELS." % self.model_id)
             return False
 
         self.no_relays = model['relays']
@@ -307,7 +307,7 @@ class ETHRelay:
         If unlocked and will lock in a number of seconds
             Returns the time before the module will lock
         """
-        result = send_command(COMMANDS['get_unlock_time'])
+        result = self.send_command(COMMANDS['get_unlock_time'])
         if result[0] == 0:
             # The module is locked and needs to be unlocked
             return False
@@ -323,11 +323,11 @@ class ETHRelay:
         """
         Send a password to the module to unlock it
         """
-        result = send_command(COMMANDS['send_password'], value=password)
+        result = self.send_command(COMMANDS['send_password'], value=password)
         
         if result[0] == 1:
             if DEBUG:
-                print "Wrong password"
+                print("Wrong password")
             self.sock.close()
             return False
         else:
@@ -338,7 +338,7 @@ class ETHRelay:
         """
         Send a command to log out from the module
         """
-        result = send_command(COMMANDS['log_out'])
+        result = self.send_command(COMMANDS['log_out'])
         success = result[0]
         if success:
             return True
@@ -398,7 +398,7 @@ class ETHRelay:
         hex_string = bitstring_to_hex(bitstring)
         result = self.send_command(COMMANDS['set_relay_state'], hex_string)
         if DEBUG:
-            print "Setting values, bitstring %s" % bitstring
+            print("Setting values, bitstring %s" % bitstring)
 
         if result[0]:
             return True

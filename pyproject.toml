@@ -1,0 +1,8 @@
+[tool.poetry]
+name = "devantech_relays"
+version = "0.0.1"
+description = "Tool for controlling Devantech's ETH-series of relays"
+authors = ["Karl Fredrik Haugland <kfh@tla.wtf>"]
+
+[tool.poetry.dependencies]
+python = ">=3,<4"
