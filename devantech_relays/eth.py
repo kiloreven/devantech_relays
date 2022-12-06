@@ -1,5 +1,9 @@
 import re
 import socket
+from logging import getLogger
+from typing import Optional
+
+logger = getLogger()
 
 
 # Reference table for the ETH8020 (for which this module was originally developed for)
@@ -57,51 +61,56 @@ import socket
 DEBUG = False
 
 COMMANDS = {
-        'get_module_info':  '\x10',
-        'set_relay_on':     '\x20',
-        'set_relay_off':    '\x21',
-        'set_relay_state':  '\x23',
-        'get_relay_state':  '\x24',
-        'get_analog_value': '\x32',
-        'ascii_command':    '\x3a',
-        'get_mac_address':  '\x77',
-        'get_volts':        '\x78',
-        'send_password':    '\x79',
-        'get_unlock_time':  '\x7a',
-        'log_out':          '\x7b',
-    }
+    'get_module_info':  '\x10',
+    'set_relay_on':     '\x20',
+    'set_relay_off':    '\x21',
+    'set_relay_state':  '\x23',
+    'get_relay_state':  '\x24',
+    'get_analog_value': '\x32',
+    'ascii_command':    '\x3a',
+    'get_mac_address':  '\x77',
+    'get_volts':        '\x78',
+    'send_password':    '\x79',
+    'get_unlock_time':  '\x7a',
+    'log_out':          '\x7b',
+}
 
 MODELS = {
-        18: {'name': 'ETH002',
-             'relays': 2,
-             'digital_io': 0,
-             'analog_input': 0
-            },
+    18: {
+        'name': 'ETH002',
+        'relays': 2,
+        'digital_io': 0,
+        'analog_input': 0
+    },
 
-        19: {'name': 'ETH008',
-             'relays': 8,
-             'digital_io': 0,
-             'analog_input': 0
-            },
+    19: {
+        'name': 'ETH008',
+        'relays': 8,
+        'digital_io': 0,
+        'analog_input': 0
+    },
 
-        20: {'name': 'ETH484',
-             'relays': 4,
-             'digital_io': 8,
-             'analog_input': 4
-            },
+    20: {
+        'name': 'ETH484',
+        'relays': 4,
+        'digital_io': 8,
+        'analog_input': 4
+    },
 
-        21: {'name': 'ETH8020', 
-             'relays': 20,
-             'digital_io': 0,
-             'analog_input': 8
-            },
+    21: {
+        'name': 'ETH8020',
+        'relays': 20,
+        'digital_io': 0,
+        'analog_input': 8
+    },
 
-        29: {'name': 'ETH044', 
-             'relays': 4,
-             'digital_io': 4,
-             'analog_input': 0
-            }
-        }
+    29: {
+        'name': 'ETH044',
+        'relays': 4,
+        'digital_io': 4,
+        'analog_input': 0
+    }
+}
 
 
 def string_only_contains_bits(string):
@@ -112,8 +121,8 @@ def string_only_contains_bits(string):
     return bool(search(string))
 
 
-def hex_to_int(data):
-    return int(data.encode('hex'), 16)
+def hex_to_int(data: str) -> int:
+    return int(data.encode('utf-8').hex(), 16)
 
 
 def int_to_hex(data):
@@ -124,9 +133,9 @@ def bitstring_to_hex(bitstring):
     hex_string = ''
 
     # Typos to avoid using reserved namespace \o/
-    btyes = [bitstring[x:x+8] for x in range(0, len(bitstring), 8)]
-    for btye in btyes:
-        hex_string += chr(int(btye[::-1], 2))
+    _bytes = [bitstring[x:x+8] for x in range(0, len(bitstring), 8)]
+    for byte in _bytes:
+        hex_string += chr(int(byte[::-1], 2))
 
     return hex_string
 
@@ -134,13 +143,25 @@ def bitstring_to_hex(bitstring):
 def hex_to_bitstring(hex_string):
     bitstring = ''
     
-    for btye in hex_string:
-        bitstring += bin(hex_to_int(btye))[2:].zfill(8)[::-1]
+    for byte in hex_string:
+        bitstring += bin(hex_to_int(byte))[2:].zfill(8)[::-1]
 
     return bitstring
 
 
 class ETHRelay:
+    model_id: int
+    software_version: int
+    firmware_version: int
+
+    no_relays: int
+    no_digital_io: int
+    no_analog_input: int
+    model_name: str
+
+    sock: socket.socket
+    connected: bool = False
+
     def __init__(self, ip, port=17494, password=None):
         self.ip = ip
         self.port = port
@@ -152,14 +173,13 @@ class ETHRelay:
             self.states = self.get_multiple_relays_state()
         else:
             self.states = {}
-        
-        
+
     def connect(self, ip, port, password=None):
         """
         Try to connect to a module using the inputted parameters.
 
         Return values:
-            True/False: Wether the connection was successfull or not
+            True/False: Whether the connection was successful or not
         """
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connected = False
@@ -167,10 +187,10 @@ class ETHRelay:
         try:
             self.sock.connect((ip, port))
         except Exception as e:
-            # The connection could fail for a multitide of reasons, in which
+            # The connection could fail for a multitude of reasons, in which
             # we will propagate any exception thrown by socket up the stack
             # by printing the exception
-            print(e)
+            logger.error(str(e))
             self.sock.close()
             return False
             
@@ -184,21 +204,18 @@ class ETHRelay:
                     print("Failed to unlock module. Try again.")
                 return False
             
-            self.connected = True 
+            self.connected = True
 
         return True
 
-    
     def disconnect(self):
         try:
             self.lock()
             self.sock.close()
         except Exception as e:
-            print(e)
-        if DEBUG:
-            print("Disconnected")
+            logger.error(str(e))
+        logger.debug("Relay disconnected")
         return True
-
         
     def bitstring_to_dict(self, bitstring):
         """
@@ -214,19 +231,18 @@ class ETHRelay:
             vals[i+1] = bool(int(val))
         
         return vals
-    
 
-    def dict_to_bitstring(self, _dict):
+    def dict_to_bitstring(self, _dict: dict[int, str]):
         """
         Turn a dict (with integers as keys) into a bitstring
         """
         # Dirtily validate the keys
         for k in _dict.keys():
             if not isinstance(k, int):
-                print("Value %s is not integer (it is %s)." % (k, type(k)))
+                logger.warning(f"Value {k} is not integer (it is {type(k)})")
                 return False
             elif k > self.no_relays:
-                print("Value %s too large; number of relays on this module is %s." % (k, self.no_relays))
+                logger.warning("Value {k} too large; number of relays on this module is {self.no_relays}")
 
         vals = ''
         # We want to iterate through the three bytes of data we might end up sending
@@ -235,8 +251,7 @@ class ETHRelay:
 
         return vals
 
-
-    def send_command(self, command, value=None, number_of_bytes=1):
+    def send_command(self, command: str, value: Optional[str] = None, number_of_bytes: int = 1):
         """
         number_of_bytes
             This is the number of bytes we should expect back from the read function.
@@ -246,33 +261,29 @@ class ETHRelay:
         if value:
             command = command + value
         try:
-            self.sock.sendall(command)
+            self.sock.sendall(command.encode("utf-8"))
         except Exception as e:
-            if DEBUG:
-                print("Error sending message")
+            logger.error(f"Error sending command to relay ({e})")
 
         return self.read_command_result(number_of_bytes)
 
-
-    def read_command_result(self, number_of_bytes):
+    def read_command_result(self, number_of_bytes: int) -> str:
         """
         Read the number of bytes from the socket
         """
         chunks = []
         number_of_bytes_received = 0
         while number_of_bytes_received < number_of_bytes:
-            if DEBUG:
-                print("Getting byte %d" % (number_of_bytes_received+1))
+            print(f"Getting byte {number_of_bytes_received+1}")
             chunk = self.sock.recv(min(number_of_bytes - number_of_bytes_received, 2048))
             if chunk == '':
-                print('Error reading message - premature end of message')
+                logger.error("Error reading message - premature end of message")
                 raise RuntimeError("socket connection broken")
+            print(chunk)
             chunks.append(chunk)
             number_of_bytes_received += len(chunk)
-        if DEBUG:
-            print('Chunks:', [x.encode('hex') for x in chunks])
-        return ''.join(chunks)
-
+        logger.debug(f"Chunks:, {[x.hex() for x in chunks]}")
+        return ''.join([chunk.decode("utf-8") for chunk in chunks])
 
     def get_module_info(self):
         """
@@ -286,8 +297,7 @@ class ETHRelay:
         try:
             model = MODELS[self.model_id]
         except AttributeError:
-            if DEBUG:
-                print("Invalid model: %s is not defined in MODELS." % self.model_id)
+            logger.debug(f"Invalid model: {self.model_id} is not defined in MODELS.")
             return False
 
         self.no_relays = model['relays']
@@ -296,7 +306,6 @@ class ETHRelay:
         self.model_name = model['name']
 
         return True
-
 
     def get_unlock_time(self):
         """
@@ -315,9 +324,8 @@ class ETHRelay:
             # The module does not require password
             return True
         else:
-           # The module tends to require password, but is unlocked
+            # The module tends to require password, but is unlocked
             return result[0]
-
 
     def unlock(self, password):
         """
@@ -333,7 +341,6 @@ class ETHRelay:
         else:
             return True
 
-
     def lock(self):
         """
         Send a command to log out from the module
@@ -344,7 +351,6 @@ class ETHRelay:
             return True
         else:
             return False
-
 
     def set_relay_on(self, relay, pulse=0):
         """
@@ -357,17 +363,16 @@ class ETHRelay:
 
         # The set_replay_on-command requires the number of the relay and an
         # optional pulse value in the range of 0 and 255
-        values = relay + pulse
+        values = str(relay) + str(pulse)
         
         # And this is a three-byte command (command + relay + pulse), so we
         # need to specify that to send_command
-        result = self.send_command(COMMANDS['set_relay_on'], values, 3)
+        result = self.send_command(COMMANDS['set_relay_on'], values)
         
         if result[0]:
             return True
         else:
             return False
-        
 
     def set_relay_off(self, relay, pulse=0):
         """
@@ -380,14 +385,13 @@ class ETHRelay:
 
         # The set_replay_on-command requires the number of the relay and an
         # optional pulse value in the range of 0 and 255
-        values = relay + pulse
+        values = str(relay) + str(pulse)
         result = self.send_command(COMMANDS['set_relay_off'], values)
         
         if result[0]:
             return True
         else:
             return False
-
 
     def set_multiple_relays_state(self, _dict):
         """
@@ -404,7 +408,6 @@ class ETHRelay:
             return True
         else:
             return False
-
 
     def set_relay_state(self, relay, state, turn_off_rest=False):
         """
@@ -423,7 +426,6 @@ class ETHRelay:
 
         return result
 
-
     def get_multiple_relays_state(self):
         """
         Ask the module to tell us about the state of all the relays
@@ -436,11 +438,9 @@ class ETHRelay:
         else:
             return False
 
-    
     def get_relay_state(self, relay):
         """
         Ask the module to tell us about the state of all the relays and find one of the relys
         """
         bitstring = self.get_multiple_relays_state()
         return bool(int(bitstring[relay]))
-        
