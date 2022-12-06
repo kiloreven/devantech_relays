@@ -57,9 +57,6 @@ logger = getLogger()
 # | 123 | 7B  | Log Out - immediately re-enables TCP/IP password protection    |                           |    x    |
 # +-----+-----+----------------------------------------------------------------+---------------------------+---------+
 
-# Will turn off print messages
-DEBUG = False
-
 COMMANDS = {
     'get_module_info':  '\x10',
     'set_relay_on':     '\x20',
@@ -200,8 +197,7 @@ class ETHRelay:
             # If this is false, we need to authenticate with password
             unlocked = self.unlock(password)
             if not unlocked:
-                if DEBUG:
-                    print("Failed to unlock module. Try again.")
+                logger.debug("Failed to unlock module. Try again.")
                 return False
             
             self.connected = True
@@ -274,12 +270,11 @@ class ETHRelay:
         chunks = []
         number_of_bytes_received = 0
         while number_of_bytes_received < number_of_bytes:
-            print(f"Getting byte {number_of_bytes_received+1}")
+            logger.debug(f"Getting byte {number_of_bytes_received+1}")
             chunk = self.sock.recv(min(number_of_bytes - number_of_bytes_received, 2048))
             if chunk == '':
                 logger.error("Error reading message - premature end of message")
                 raise RuntimeError("socket connection broken")
-            print(chunk)
             chunks.append(chunk)
             number_of_bytes_received += len(chunk)
         logger.debug(f"Chunks:, {[x.hex() for x in chunks]}")
@@ -334,8 +329,7 @@ class ETHRelay:
         result = self.send_command(COMMANDS['send_password'], value=password)
         
         if result[0] == 1:
-            if DEBUG:
-                print("Wrong password")
+            logger.debug("Wrong password")
             self.sock.close()
             return False
         else:
@@ -401,8 +395,7 @@ class ETHRelay:
         bitstring = self.dict_to_bitstring(_dict)
         hex_string = bitstring_to_hex(bitstring)
         result = self.send_command(COMMANDS['set_relay_state'], hex_string)
-        if DEBUG:
-            print("Setting values, bitstring %s" % bitstring)
+        logger.debug("Setting values, bitstring %s" % bitstring)
 
         if result[0]:
             return True
