@@ -58,18 +58,18 @@ logger = getLogger()
 # +-----+-----+----------------------------------------------------------------+---------------------------+---------+
 
 COMMANDS = {
-    'get_module_info':  '\x10',
-    'set_relay_on':     '\x20',
-    'set_relay_off':    '\x21',
-    'set_relay_state':  '\x23',
-    'get_relay_state':  '\x24',
-    'get_analog_value': '\x32',
-    'ascii_command':    '\x3a',
-    'get_mac_address':  '\x77',
-    'get_volts':        '\x78',
-    'send_password':    '\x79',
-    'get_unlock_time':  '\x7a',
-    'log_out':          '\x7b',
+    'get_module_info':  b'\x10',
+    'set_relay_on':     b'\x20',
+    'set_relay_off':    b'\x21',
+    'set_relay_state':  b'\x23',
+    'get_relay_state':  b'\x24',
+    'get_analog_value': b'\x32',
+    'ascii_command':    b'\x3a',
+    'get_mac_address':  b'\x77',
+    'get_volts':        b'\x78',
+    'send_password':    b'\x79',
+    'get_unlock_time':  b'\x7a',
+    'log_out':          b'\x7b',
 }
 
 MODELS = {
@@ -118,30 +118,30 @@ def string_only_contains_bits(string):
     return bool(search(string))
 
 
-def hex_to_int(data: str) -> int:
-    return int(data.encode('utf-8').hex(), 16)
+def hex_to_int(data: bytes) -> int:
+    return int(data.hex(), 16)
 
 
 def int_to_hex(data):
     return chr(data)
 
 
-def bitstring_to_hex(bitstring):
-    hex_string = ''
+def bitstring_to_hex(bitstring: str) -> bytes:
+    hex_string = b''
 
     # Typos to avoid using reserved namespace \o/
     _bytes = [bitstring[x:x+8] for x in range(0, len(bitstring), 8)]
     for byte in _bytes:
-        hex_string += chr(int(byte[::-1], 2))
+        hex_string += int(byte[::-1], 2).to_bytes(1, "big")
 
     return hex_string
 
 
-def hex_to_bitstring(hex_string):
+def bytes_to_bitstring(bytes_string):
     bitstring = ''
-    
-    for byte in hex_string:
-        bitstring += bin(hex_to_int(byte))[2:].zfill(8)[::-1]
+
+    for byte in bytes_string:
+        bitstring += bin(byte)[2:].zfill(8)[::-1]
 
     return bitstring
 
@@ -247,7 +247,7 @@ class ETHRelay:
 
         return vals
 
-    def send_command(self, command: str, value: Optional[str] = None, number_of_bytes: int = 1):
+    def send_command(self, command: bytes, value: Optional[bytes] = None, number_of_bytes: int = 1) -> bytes:
         """
         number_of_bytes
             This is the number of bytes we should expect back from the read function.
@@ -257,13 +257,14 @@ class ETHRelay:
         if value:
             command = command + value
         try:
-            self.sock.sendall(command.encode("utf-8"))
+            self.sock.sendall(command)
         except Exception as e:
             logger.error(f"Error sending command to relay ({e})")
 
-        return self.read_command_result(number_of_bytes)
+        result = self.read_command_result(number_of_bytes)
+        return result
 
-    def read_command_result(self, number_of_bytes: int) -> str:
+    def read_command_result(self, number_of_bytes: int) -> bytes:
         """
         Read the number of bytes from the socket
         """
@@ -278,16 +279,16 @@ class ETHRelay:
             chunks.append(chunk)
             number_of_bytes_received += len(chunk)
         logger.debug(f"Chunks:, {[x.hex() for x in chunks]}")
-        return ''.join([chunk.decode("utf-8") for chunk in chunks])
+        return b"".join(chunks)
 
     def get_module_info(self):
         """
         Get info about our module and store it as attributes of self
         """
         result = self.send_command(COMMANDS['get_module_info'], number_of_bytes=3)
-        self.model_id = hex_to_int(result[0])
-        self.software_version = hex_to_int(result[1])
-        self.firmware_version = hex_to_int(result[2])
+        self.model_id = result[0]
+        self.software_version = result[1]
+        self.firmware_version = result[2]
 
         try:
             model = MODELS[self.model_id]
@@ -346,7 +347,7 @@ class ETHRelay:
         else:
             return False
 
-    def set_relay_on(self, relay, pulse=0):
+    def set_relay_on(self, relay: int, pulse: int = 0):
         """
         Set the state of a single relay. This function can also trigger
         pulse the relay. The pulse value is defined in the range of 1-255,
@@ -357,7 +358,7 @@ class ETHRelay:
 
         # The set_replay_on-command requires the number of the relay and an
         # optional pulse value in the range of 0 and 255
-        values = str(relay) + str(pulse)
+        values = relay.to_bytes(1, "big") + pulse.to_bytes(1, "big")
         
         # And this is a three-byte command (command + relay + pulse), so we
         # need to specify that to send_command
@@ -379,7 +380,7 @@ class ETHRelay:
 
         # The set_replay_on-command requires the number of the relay and an
         # optional pulse value in the range of 0 and 255
-        values = str(relay) + str(pulse)
+        values = relay.to_bytes(1, "big") + pulse.to_bytes(1, "big")
         result = self.send_command(COMMANDS['set_relay_off'], values)
         
         if result[0]:
@@ -398,9 +399,9 @@ class ETHRelay:
         logger.debug("Setting values, bitstring %s" % bitstring)
 
         if result[0]:
-            return True
-        else:
             return False
+        else:
+            return True
 
     def set_relay_state(self, relay, state, turn_off_rest=False):
         """
@@ -424,7 +425,7 @@ class ETHRelay:
         Ask the module to tell us about the state of all the relays
         """
         result = self.send_command(COMMANDS['get_relay_state'], number_of_bytes=3)
-        bitstring = hex_to_bitstring(result)
+        bitstring = bytes_to_bitstring(result)
         
         if result:
             return self.bitstring_to_dict(bitstring)
